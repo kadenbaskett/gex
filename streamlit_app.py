@@ -3,6 +3,7 @@
 
 import asyncio
 import time
+from datetime import datetime
 import streamlit as st
 from src.services.option_parser import OptionParser
 from src.services.gex_calculator import GEXCalculator
@@ -85,8 +86,9 @@ chart_type = st.sidebar.selectbox(
 # Real-Time Refresh Countdown Timer
 # ============================================================================
 
-# Create a placeholder for the timer
+# Create placeholders for timer and timestamps
 timer_placeholder = st.sidebar.empty()
+timestamps_placeholder = st.sidebar.empty()
 
 # Update timer in real-time every second
 import threading
@@ -107,9 +109,19 @@ def update_timer():
         minutes = int(seconds_remaining // 60)
         seconds = int(seconds_remaining % 60)
 
-        # Update the placeholder
+        # Get last updated and next update times
+        last_updated = datetime.fromtimestamp(st.session_state.last_refresh)
+        next_update = datetime.fromtimestamp(st.session_state.last_refresh + REFRESH_INTERVAL)
+
+        # Update the timer placeholder
         timer_placeholder.markdown(
             f"**⏱️ Auto-refresh in:** {minutes}:{seconds:02d}"
+        )
+
+        # Update the timestamps placeholder
+        timestamps_placeholder.markdown(
+            f"📊 Last updated: {last_updated.strftime('%H:%M:%S')}\n\n"
+            f"⏰ Next update: {next_update.strftime('%H:%M:%S')}"
         )
 
         # Sleep for 0.1 seconds and check again
