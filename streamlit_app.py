@@ -82,11 +82,43 @@ chart_type = st.sidebar.selectbox(
 )
 
 # ============================================================================
-# Display Refresh Timer
+# Real-Time Refresh Countdown Timer
 # ============================================================================
 
-minutes_until_refresh = (REFRESH_INTERVAL - time_since_refresh) / 60
-st.sidebar.markdown(f"**⏱️ Auto-refresh in:** {minutes_until_refresh:.1f} min")
+# Create a placeholder for the timer
+timer_placeholder = st.sidebar.empty()
+
+# Update timer in real-time every second
+import threading
+
+def update_timer():
+    """Update the countdown timer every second"""
+    while True:
+        current_time = time.time()
+        time_since_refresh = current_time - st.session_state.last_refresh
+
+        if time_since_refresh >= REFRESH_INTERVAL:
+            # Time to refresh
+            st.session_state.last_refresh = current_time
+            st.rerun()
+
+        # Calculate time until refresh
+        seconds_remaining = REFRESH_INTERVAL - time_since_refresh
+        minutes = int(seconds_remaining // 60)
+        seconds = int(seconds_remaining % 60)
+
+        # Update the placeholder
+        timer_placeholder.markdown(
+            f"**⏱️ Auto-refresh in:** {minutes}:{seconds:02d}"
+        )
+
+        # Sleep for 0.1 seconds and check again
+        time.sleep(0.1)
+
+# Start timer thread (only if not already running)
+if "timer_thread" not in st.session_state:
+    st.session_state.timer_thread = threading.Thread(target=update_timer, daemon=True)
+    st.session_state.timer_thread.start()
 
 # ============================================================================
 # Data Fetching with Caching
