@@ -4,10 +4,9 @@
 import asyncio
 import time
 import streamlit as st
-from src.config.settings import settings
 from src.services.option_parser import OptionParser
 from src.services.gex_calculator import GEXCalculator
-from plot_gex import fetch_data, create_single_page_dashboard
+from plot_gex import fetch_data, create_single_page_dashboard, parse_price_history
 
 # ============================================================================
 # Page Configuration
@@ -20,7 +19,7 @@ st.set_page_config(
 )
 
 # ============================================================================
-# Auto-Refresh Timer
+# Auto-Refresh Timer (5 minutes)
 # ============================================================================
 
 REFRESH_INTERVAL = 300  # 5 minutes in seconds
@@ -34,10 +33,6 @@ time_since_refresh = current_time - st.session_state.last_refresh
 if time_since_refresh >= REFRESH_INTERVAL:
     st.session_state.last_refresh = current_time
     st.rerun()
-
-# Display refresh countdown in sidebar
-minutes_until_refresh = (REFRESH_INTERVAL - time_since_refresh) / 60
-st.sidebar.markdown(f"**Auto-refresh in:** {minutes_until_refresh:.1f} min")
 
 # ============================================================================
 # Styling
@@ -81,10 +76,17 @@ expiration = st.sidebar.selectbox(
 
 chart_type = st.sidebar.selectbox(
     "Chart Type",
-    ["candlestick", "ohlc"],
-    format_func=lambda x: "Candlestick (Full OHLC)" if x == "candlestick" else "OHLC/4 Average",
+    ["ohlc4", "candlestick"],
+    format_func=lambda x: "OHLC/4 Average (Default)" if x == "ohlc4" else "Candlestick (Full OHLC)",
     help="Price chart visualization type",
 )
+
+# ============================================================================
+# Display Refresh Timer
+# ============================================================================
+
+minutes_until_refresh = (REFRESH_INTERVAL - time_since_refresh) / 60
+st.sidebar.markdown(f"**⏱️ Auto-refresh in:** {minutes_until_refresh:.1f} min")
 
 # ============================================================================
 # Data Fetching with Caching
@@ -96,36 +98,28 @@ def fetch_and_process_data(ticker: str, expiration: str):
     try:
         # Fetch data from API
         try:
-            spot_price, chain_data = asyncio.run(
+            spot_price, chain_data, history_data = asyncio.run(
                 fetch_data(ticker, expiration)
             )
         except RuntimeError:
             # Handle asyncio.run() in already-running event loop (Streamlit issue)
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            spot_price, chain_data = loop.run_until_complete(
+            spot_price, chain_data, history_data = loop.run_until_complete(
                 fetch_data(ticker, expiration)
             )
             loop.close()
 
         if not chain_data:
             st.error(f"❌ No option chain data received for {ticker}")
-            return None, None, None, None
-
-        # Debug: Check what's in callExpDateMap and putExpDateMap
-        call_map = chain_data.get("callExpDateMap", {})
-        put_map = chain_data.get("putExpDateMap", {})
-        print(f"DEBUG: callExpDateMap count: {len(call_map)}, putExpDateMap count: {len(put_map)}")
-        if call_map:
-            first_exp = list(call_map.keys())[0]
-            print(f"DEBUG: First call exp date: {first_exp}, strikes: {len(call_map[first_exp])}")
+            return None, None, None, None, None
 
         # Parse contracts
         contracts = OptionParser.parse_option_chain(ticker, chain_data)
 
         if not contracts:
             st.error(f"❌ No contracts parsed from chain data")
-            return None, None, None, None
+            return None, None, None, None, None
 
         # Calculate GEX
         calculator = GEXCalculator()
@@ -133,7 +127,7 @@ def fetch_and_process_data(ticker: str, expiration: str):
 
         if not snapshot or not snapshot.levels:
             st.error(f"❌ No gamma data available - contracts may lack required fields")
-            return None, None, None, None
+            return None, None, None, None, None
 
         # Extract strike_data
         strike_data = {}
@@ -154,13 +148,13 @@ def fetch_and_process_data(ticker: str, expiration: str):
                 strike_data[strike]["put_price"] = contract.last_price
                 strike_data[strike]["put_gamma"] = contract.gamma
 
-        return spot_price, snapshot, contracts, strike_data
+        return spot_price, snapshot, contracts, strike_data, history_data
 
     except Exception as e:
         import traceback
         st.error(f"❌ Error fetching data: {str(e)}")
         st.error(f"📋 Details: {traceback.format_exc()}")
-        return None, None, None, None
+        return None, None, None, None, None
 
 
 # ============================================================================
@@ -177,7 +171,7 @@ if not hasattr(st.session_state, "generate_clicked"):
 
 if st.session_state.generate_clicked:
     with st.spinner(f"📡 Fetching data for {ticker}..."):
-        spot_price, snapshot, contracts, strike_data = (
+        spot_price, snapshot, contracts, strike_data, history_data = (
             fetch_and_process_data(ticker, expiration)
         )
 
@@ -202,6 +196,8 @@ if st.session_state.generate_clicked:
                     snapshot,
                     contracts,
                     strike_data,
+                    history_data,
+                    chart_type,
                 )
 
                 # Display with full width
@@ -211,16 +207,15 @@ if st.session_state.generate_clicked:
                 st.markdown("---")
                 st.markdown("### Chart Legend")
 
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
 
                 with col1:
                     st.markdown(
                         """
-                    **Chart 1: Gamma Exposure Analysis**
-                    - 🔵 CYAN line = Total gamma exposure
-                    - 🟢 GREEN area = Call gamma (Bullish)
-                    - 🔴 RED area = Put gamma (Bearish)
-                    - ⚪ WHITE line = Current price
+                    **Chart 1: Price + Gamma Heatmap**
+                    - 🟢 GREEN heatmap = Support (positive gamma)
+                    - 🔴 RED heatmap = Resistance (negative gamma)
+                    - ⚪ WHITE line = OHLC/4 average price
                     """
                     )
 
@@ -229,9 +224,20 @@ if st.session_state.generate_clicked:
                         """
                     **Chart 2: Net Gamma Exposure**
                     - 📊 Bar chart by strike
-                    - 🟢 GREEN bars = Bullish (support)
-                    - 🔴 RED bars = Bearish (resistance)
+                    - 🟢 GREEN bars = Bullish zones
+                    - 🔴 RED bars = Bearish zones
                     - 🟡 GOLD bars = Extremes
+                    """
+                    )
+
+                with col3:
+                    st.markdown(
+                        """
+                    **Chart 3: GEX Analysis**
+                    - 🔵 CYAN line = Total gamma
+                    - 🟢 GREEN area = Call gamma
+                    - 🔴 RED area = Put gamma
+                    - ⚪ WHITE line = Current price
                     """
                     )
 
