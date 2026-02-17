@@ -194,7 +194,7 @@ def fetch_and_process_data(ticker: str, expiration: str):
 # ============================================================================
 
 # Add "Generate" button in sidebar
-if st.sidebar.button("🔄 Generate Dashboard", use_container_width=True):
+if st.sidebar.button("🔄 Generate Dashboard", width="stretch"):
     st.session_state.generate_clicked = True
 
 # Generate on load or button click
@@ -233,7 +233,7 @@ if st.session_state.generate_clicked:
                 )
 
                 # Display with full width
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
 
                 # Display legend
                 st.markdown("---")
