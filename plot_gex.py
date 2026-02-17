@@ -154,11 +154,15 @@ def create_single_page_dashboard(ticker: str, spot_price: float, snapshot, contr
                 x=timestamps,
                 y=strikes,
                 z=heatmap_z,
-                colorscale=[[0.0, "rgba(255, 0, 0, 0.3)"], [0.5, "rgba(17, 17, 17, 0)"], [1.0, "rgba(0, 255, 0, 0.3)"]],
+                colorscale=[
+                    [0.0, "rgba(255, 0, 0, 0.3)"],      # Negative (min) = RED (bearish/resistance)
+                    [0.5, "rgba(17, 17, 17, 0)"],       # Neutral = transparent
+                    [1.0, "rgba(0, 255, 0, 0.3)"]       # Positive (max) = GREEN (bullish/support)
+                ],
                 showscale=False,
                 hoverinfo="skip",
                 name="",
-                colorbar=dict(thickness=0),
+                zmid=0,  # Explicitly center the colorscale at zero
             ),
             row=1, col=1
         )
