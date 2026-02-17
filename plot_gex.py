@@ -306,8 +306,15 @@ def create_single_page_dashboard(ticker: str, spot_price: float, snapshot, contr
     # Update axes
     fig.update_xaxes(title_text="Strike Price ($)", row=3, col=1)
     fig.update_xaxes(title_text="Net GEX (Millions $)", row=2, col=1)
-    # Hide time scale on price chart (both label and ticks)
-    fig.update_xaxes(showticklabels=False, ticks="", row=1, col=1)
+    # Hide time scale on price chart completely
+    fig.update_xaxes(
+        showticklabels=False,
+        ticks="",
+        title_text="",
+        showgrid=False,
+        zeroline=False,
+        row=1, col=1
+    )
     fig.update_yaxes(title_text="Gamma Exposure ($)", row=3, col=1)
     fig.update_yaxes(title_text="Strike Price", row=2, col=1)
 
