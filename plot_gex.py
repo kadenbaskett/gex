@@ -143,24 +143,43 @@ def create_single_page_dashboard(ticker: str, spot_price: float, snapshot, contr
     timestamps, opens, highs, lows, closes = parse_price_history(history_data) if history_data else ([], [], [], [], [])
 
     if timestamps:
-        # Add heatmap for gamma levels
-        # Create a heatmap grid: strikes as rows, timestamps as columns, gamma as values
-        heatmap_z = []
-        for strike in strikes:
-            heatmap_z.append([snapshot.levels[strike].total_gex / 1_000_000] * len(timestamps))
+        # Add heatmap for gamma levels (background support/resistance visualization)
+        # Create rectangles for each strike showing gamma intensity
+        min_gex = min([snapshot.levels[s].total_gex for s in strikes])
+        max_gex = max([snapshot.levels[s].total_gex for s in strikes])
 
-        fig.add_trace(
-            go.Heatmap(
-                x=timestamps,
-                y=strikes,
-                z=heatmap_z,
-                colorscale=[[0.0, "rgba(255, 0, 0, 0.5)"], [0.5, "rgba(17, 17, 17, 0)"], [1.0, "rgba(0, 255, 0, 0.5)"]],
-                showscale=False,
-                hoverinfo="skip",
-                name="",
-            ),
-            row=1, col=1
-        )
+        for strike in strikes:
+            gamma_val = snapshot.levels[strike].total_gex
+            # Normalize to -1 to 1 range
+            if max_gex > 0 and min_gex < 0:
+                norm_val = gamma_val / max(abs(max_gex), abs(min_gex))
+            elif max_gex > 0:
+                norm_val = gamma_val / max_gex
+            elif min_gex < 0:
+                norm_val = gamma_val / abs(min_gex)
+            else:
+                norm_val = 0
+
+            # Determine color: red for negative (bearish), green for positive (bullish)
+            if norm_val > 0:
+                opacity = 0.3 + (norm_val * 0.2)  # 0.3-0.5 range
+                color = f"rgba(0, 255, 0, {opacity})"  # Green for bullish
+            else:
+                opacity = 0.3 + (abs(norm_val) * 0.2)  # 0.3-0.5 range
+                color = f"rgba(255, 0, 0, {opacity})"  # Red for bearish
+
+            # Add a shape for this strike's gamma level (horizontal band)
+            fig.add_shape(
+                type="rect",
+                xref="x", yref="y",
+                x0=timestamps[0], x1=timestamps[-1],
+                y0=strike - 0.5, y1=strike + 0.5,
+                fillcolor=color,
+                line_color=None,
+                opacity=0.5,
+                layer="below",
+                row=1, col=1
+            )
 
         # Add price chart (candlestick or OHLC/4)
         if chart_type == "candlestick":
