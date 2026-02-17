@@ -95,16 +95,45 @@ def fetch_and_process_data(ticker: str, expiration: str):
     """Fetch option data and process it."""
     try:
         # Fetch data from API
-        spot_price, chain_data = asyncio.run(
-            fetch_data(ticker, expiration)
-        )
+        try:
+            spot_price, chain_data = asyncio.run(
+                fetch_data(ticker, expiration)
+            )
+        except RuntimeError:
+            # Handle asyncio.run() in already-running event loop (Streamlit issue)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            spot_price, chain_data = loop.run_until_complete(
+                fetch_data(ticker, expiration)
+            )
+            loop.close()
+
+        if not chain_data:
+            st.error(f"❌ No option chain data received for {ticker}")
+            return None, None, None, None
+
+        # Debug: Check what's in callExpDateMap and putExpDateMap
+        call_map = chain_data.get("callExpDateMap", {})
+        put_map = chain_data.get("putExpDateMap", {})
+        print(f"DEBUG: callExpDateMap count: {len(call_map)}, putExpDateMap count: {len(put_map)}")
+        if call_map:
+            first_exp = list(call_map.keys())[0]
+            print(f"DEBUG: First call exp date: {first_exp}, strikes: {len(call_map[first_exp])}")
 
         # Parse contracts
         contracts = OptionParser.parse_option_chain(ticker, chain_data)
 
+        if not contracts:
+            st.error(f"❌ No contracts parsed from chain data")
+            return None, None, None, None
+
         # Calculate GEX
         calculator = GEXCalculator()
         snapshot = calculator.calculate_gex(contracts, spot_price)
+
+        if not snapshot or not snapshot.levels:
+            st.error(f"❌ No gamma data available - contracts may lack required fields")
+            return None, None, None, None
 
         # Extract strike_data
         strike_data = {}
@@ -128,7 +157,9 @@ def fetch_and_process_data(ticker: str, expiration: str):
         return spot_price, snapshot, contracts, strike_data
 
     except Exception as e:
+        import traceback
         st.error(f"❌ Error fetching data: {str(e)}")
+        st.error(f"📋 Details: {traceback.format_exc()}")
         return None, None, None, None
 
 
