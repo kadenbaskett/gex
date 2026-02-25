@@ -27,12 +27,19 @@ REFRESH_INTERVAL = 300  # 5 minutes in seconds
 
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
+if "last_refresh_minute" not in st.session_state:
+    st.session_state.last_refresh_minute = -1
 
 current_time = time.time()
-time_since_refresh = current_time - st.session_state.last_refresh
+current_dt = datetime.fromtimestamp(current_time)
+current_minute = current_dt.minute
 
-if time_since_refresh >= REFRESH_INTERVAL:
+# Refresh on every X:00 and X:05
+should_refresh = current_minute % 5 == 0 and current_minute != st.session_state.last_refresh_minute
+
+if should_refresh:
     st.session_state.last_refresh = current_time
+    st.session_state.last_refresh_minute = current_minute
     st.rerun()
 
 # ============================================================================
@@ -71,7 +78,7 @@ ticker = st.sidebar.text_input(
 
 expiration = st.sidebar.selectbox(
     "Expiration Filter",
-    ["next-friday", "today", "two-fridays"],
+    ["next-friday", "today", "two-fridays", "all"],
     help="Which option expiration dates to include",
 )
 
@@ -83,54 +90,33 @@ chart_type = st.sidebar.selectbox(
 )
 
 # ============================================================================
-# Real-Time Refresh Countdown Timer
+# Client-Side Countdown Timer & Timestamps
 # ============================================================================
 
-# Create placeholders for timer and timestamps
-timer_placeholder = st.sidebar.empty()
-timestamps_placeholder = st.sidebar.empty()
+# Calculate next refresh time (next X:00 or X:05 mark) based on CURRENT time
+now = time.time()
+current_dt = datetime.fromtimestamp(now)
+current_minute = current_dt.minute
 
-# Update timer in real-time every second
-import threading
+# Find next 5-minute mark
+next_minute = ((current_minute // 5) + 1) * 5
+if next_minute >= 60:
+    next_minute = 0
+    next_dt = current_dt.replace(hour=(current_dt.hour + 1) % 24, minute=0, second=0, microsecond=0)
+else:
+    next_dt = current_dt.replace(minute=next_minute, second=0, microsecond=0)
 
-def update_timer():
-    """Update the countdown timer every second"""
-    while True:
-        current_time = time.time()
-        time_since_refresh = current_time - st.session_state.last_refresh
+# Get last updated time
+last_updated = datetime.fromtimestamp(st.session_state.last_refresh)
 
-        if time_since_refresh >= REFRESH_INTERVAL:
-            # Time to refresh
-            st.session_state.last_refresh = current_time
-            st.rerun()
+# Format times in 12-hour AM/PM format (hour:minute only)
+last_updated_str = last_updated.strftime('%I:%M %p')
+next_update_str = next_dt.strftime('%I:%M %p')
 
-        # Calculate time until refresh
-        seconds_remaining = REFRESH_INTERVAL - time_since_refresh
-        minutes = int(seconds_remaining // 60)
-        seconds = int(seconds_remaining % 60)
-
-        # Get last updated and next update times
-        last_updated = datetime.fromtimestamp(st.session_state.last_refresh)
-        next_update = datetime.fromtimestamp(st.session_state.last_refresh + REFRESH_INTERVAL)
-
-        # Update the timer placeholder
-        timer_placeholder.markdown(
-            f"**⏱️ Auto-refresh in:** {minutes}:{seconds:02d}"
-        )
-
-        # Update the timestamps placeholder
-        timestamps_placeholder.markdown(
-            f"📊 Last updated: {last_updated.strftime('%H:%M:%S')}\n\n"
-            f"⏰ Next update: {next_update.strftime('%H:%M:%S')}"
-        )
-
-        # Sleep for 0.1 seconds and check again
-        time.sleep(0.1)
-
-# Start timer thread (only if not already running)
-if "timer_thread" not in st.session_state:
-    st.session_state.timer_thread = threading.Thread(target=update_timer, daemon=True)
-    st.session_state.timer_thread.start()
+# Display in sidebar - simple timestamps
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"**📊 Last updated:** `{last_updated_str}`")
+st.sidebar.markdown(f"**⏰ Next update:** `{next_update_str}`")
 
 # ============================================================================
 # Data Fetching with Caching

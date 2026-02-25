@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     schwab_callback_url: Optional[str] = Field(default=None, alias="SCHWAB_CALLBACK_URL")
     schwab_token_path: str = Field(default="token.json", alias="SCHWAB_TOKEN_PATH")
 
+    # Massive API
+    massive_api_key: Optional[str] = Field(default=None, alias="MASSIVE_API_KEY")
+
     # Streaming
     stream_refresh_interval: int = Field(default=5, alias="STREAM_REFRESH_INTERVAL")
     stream_reconnect_timeout: int = Field(default=30, alias="STREAM_RECONNECT_TIMEOUT")
@@ -49,4 +52,5 @@ except Exception:
         schwab_api_key="",
         schwab_app_secret="",
         schwab_callback_url="",
+        massive_api_key="",
     )  # type: ignore

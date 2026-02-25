@@ -15,6 +15,7 @@ class ExpirationFilter(str, Enum):
     TODAY = "today"
     NEXT_FRIDAY = "next-friday"
     TWO_FRIDAYS = "two-fridays"
+    ALL = "all"
 
 
 def get_next_friday() -> datetime:
@@ -192,5 +193,8 @@ class GEXCalculator:
                 for c in contracts
                 if c.expiration.date() <= cutoff_date
             ]
+
+        elif expiration_filter == ExpirationFilter.ALL:
+            return contracts
 
         return contracts

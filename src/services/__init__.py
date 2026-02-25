@@ -6,6 +6,7 @@ from src.services.gex_calculator import (
     get_next_friday,
     get_two_fridays_from_today,
 )
+from src.services.massive import MassiveAPIError, MassiveService
 from src.services.option_parser import OptionParser
 
 __all__ = [
@@ -14,4 +15,6 @@ __all__ = [
     "ExpirationFilter",
     "get_next_friday",
     "get_two_fridays_from_today",
+    "MassiveService",
+    "MassiveAPIError",
 ]

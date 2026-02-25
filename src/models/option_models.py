@@ -55,3 +55,23 @@ class GammaSnapshot(BaseModel):
             self.levels.items(), key=lambda x: abs(x[1].total_gex), reverse=True
         )
         return [(strike, level.total_gex) for strike, level in sorted_strikes[:n]]
+
+
+class Candlestick(BaseModel):
+    """Represents OHLCV candlestick data."""
+
+    timestamp: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+    vwap: float = 0.0
+
+
+class CandlestickData(BaseModel):
+    """Container for candlestick data from Massive API."""
+
+    ticker: str
+    timeframe: str
+    candlesticks: list[Candlestick] = Field(default_factory=list)

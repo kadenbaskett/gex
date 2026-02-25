@@ -34,7 +34,7 @@ async def fetch_data(ticker: str, expiration_type: str = "next-friday"):
     )
     print(f"   Spot: ${spot_price:.2f}\n")
 
-    # Get 5-minute price history (last 7 days)
+    # Get 5-minute price history (last 7 days, including extended hours)
     print("2️⃣  Fetching 5-minute price history...")
     try:
         eastern = pytz.timezone('US/Eastern')
@@ -44,7 +44,8 @@ async def fetch_data(ticker: str, expiration_type: str = "next-friday"):
         history_response = await client.get_price_history_every_five_minutes(
             ticker,
             start_datetime=start_time,
-            end_datetime=end_time
+            end_datetime=end_time,
+            need_extended_hours_data=True
         )
         history_data = history_response.json()
         print(f"   Status: {history_response.status_code}\n")
@@ -62,14 +63,18 @@ async def fetch_data(ticker: str, expiration_type: str = "next-friday"):
     elif expiration_type == "two-fridays":
         to_date = get_two_fridays_from_today().date() + timedelta(days=1)
         print(f"   Expiration filter: Two Fridays out (before {to_date})")
+    elif expiration_type == "all":
+        to_date = datetime.now().date() + timedelta(days=365)
+        print(f"   Expiration filter: All expirations (next 365 days)")
     else:  # next-friday (default)
         to_date = get_next_friday().date() + timedelta(days=1)
         print(f"   Expiration filter: Next Friday (before {to_date})")
 
+    print(f"   Requesting option chain (to_date={to_date})...")
     chain_response = await client.get_option_chain(
         symbol=ticker,
         to_date=to_date,
-        strike_count=50,
+        strike_count=100,
     )
     chain_data = chain_response.json()
     print(f"   Status: {chain_response.status_code}\n")
@@ -108,6 +113,14 @@ def create_single_page_dashboard(ticker: str, spot_price: float, snapshot, contr
     """Create GEX dashboard with price chart, gamma heatmap, net GEX, and GEX analysis."""
 
     strikes = sorted(snapshot.levels.keys())
+
+    # Filter out strikes with zero GEX on the edges
+    strikes_with_gex = [s for s in strikes if snapshot.levels[s].total_gex != 0]
+    if strikes_with_gex:
+        first_strike_idx = strikes.index(strikes_with_gex[0])
+        last_strike_idx = strikes.index(strikes_with_gex[-1])
+        strikes = strikes[first_strike_idx:last_strike_idx + 1]
+
     total_gex = [snapshot.levels[s].total_gex for s in strikes]
     call_gex = [snapshot.levels[s].call_gex for s in strikes]
     put_gex = [snapshot.levels[s].put_gex for s in strikes]
@@ -143,6 +156,9 @@ def create_single_page_dashboard(ticker: str, spot_price: float, snapshot, contr
     timestamps, opens, highs, lows, closes = parse_price_history(history_data) if history_data else ([], [], [], [], [])
 
     if timestamps:
+        # Use index-based X-axis to compress overnight gaps
+        x_indices = list(range(len(timestamps)))
+
         # Add heatmap for gamma levels as background
         # Create heatmap grid: strikes as rows, timestamps as columns, gamma as values
         heatmap_z = []
@@ -151,7 +167,7 @@ def create_single_page_dashboard(ticker: str, spot_price: float, snapshot, contr
 
         fig.add_trace(
             go.Heatmap(
-                x=timestamps,
+                x=x_indices,
                 y=strikes,
                 z=heatmap_z,
                 colorscale=[
@@ -171,7 +187,7 @@ def create_single_page_dashboard(ticker: str, spot_price: float, snapshot, contr
         if chart_type == "candlestick":
             fig.add_trace(
                 go.Candlestick(
-                    x=timestamps,
+                    x=x_indices,
                     open=opens,
                     high=highs,
                     low=lows,
@@ -182,16 +198,18 @@ def create_single_page_dashboard(ticker: str, spot_price: float, snapshot, contr
                 ),
                 row=1, col=1
             )
+            fig.update_layout(xaxis_rangeslider_visible=False)
         else:  # ohlc4
             ohlc4_prices = calculate_ohlc4(opens, highs, lows, closes)
             fig.add_trace(
                 go.Scatter(
-                    x=timestamps,
+                    x=x_indices,
                     y=ohlc4_prices,
                     name="Price (OHLC/4)",
                     mode="lines",
                     line=dict(color="white", width=2),
-                    hovertemplate="<b>%{x}</b><br>Price: $%{y:.2f}<extra></extra>",
+                    hovertemplate="<b>%{customdata}</b><br>Price: $%{y:.2f}<extra></extra>",
+                    customdata=timestamps,
                 ),
                 row=1, col=1
             )
@@ -431,7 +449,7 @@ Examples:
         "--expiration",
         "-e",
         type=str,
-        choices=["today", "next-friday", "two-fridays"],
+        choices=["today", "next-friday", "two-fridays", "all"],
         default="next-friday",
         help="Expiration filter (default: next-friday)",
     )
